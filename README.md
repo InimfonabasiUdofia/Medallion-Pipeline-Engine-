@@ -4,7 +4,7 @@ A configuration-driven Bronze → Silver → Gold pipeline built from scratch wi
 
 All data is synthetic: 12 tables, 3 organisations, 7 days, 252 ORC files.
 
-> Demo video: _add your Loom link here_
+
 
 ## What it does
 
