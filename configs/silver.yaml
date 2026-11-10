@@ -1,0 +1,169 @@
+# Silver layer config: cleaned, typed, deduplicated tables.
+# Grain of every Silver table: 1 row per (organisation_id, <business_key>, processing_date).
+# organisation_id and processing_date are added automatically and always part of the key.
+# Dedup rule: keep the row with the latest updated_at for each key.
+# clean: trim = trim spaces, upper_trim = trim + upper case; type is applied with CAST.
+
+defaults:
+  database: silver
+  source_database: bronze
+  engine: MergeTree
+  dedup_order_by: updated_at
+
+tables:
+  households:
+    source_table: households
+    kind: dimension
+    business_key: [household_id]
+    foreign_keys:
+      advisor_id: advisors
+    track_history: [advisor_id]   # builds a <table>_history table + <table>_current view
+    columns:
+      - {name: household_id, type: String, clean: trim}
+      - {name: household_name, type: String, clean: trim}
+      - {name: advisor_id, type: String, clean: trim}
+      - {name: updated_at, type: DateTime}
+  contacts:
+    source_table: contacts
+    kind: dimension
+    business_key: [contact_id]
+    foreign_keys:
+      household_id: households
+    track_history: [email]   # builds a <table>_history table + <table>_current view
+    columns:
+      - {name: contact_id, type: String, clean: trim}
+      - {name: household_id, type: String, clean: trim}
+      - {name: first_name, type: String, clean: trim}
+      - {name: last_name, type: String, clean: trim}
+      - {name: email, type: String, clean: trim}
+      - {name: updated_at, type: DateTime}
+  accounts:
+    source_table: accounts
+    kind: dimension
+    business_key: [account_id]
+    foreign_keys:
+      household_id: households
+      custodian_id: custodians
+    track_history: [status]   # builds a <table>_history table + <table>_current view
+    columns:
+      - {name: account_id, type: String, clean: trim}
+      - {name: household_id, type: String, clean: trim}
+      - {name: custodian_id, type: String, clean: trim}
+      - {name: account_type, type: String, clean: upper_trim}
+      - {name: status, type: String, clean: upper_trim}
+      - {name: opened_date, type: Date}
+      - {name: updated_at, type: DateTime}
+  advisors:
+    source_table: advisors
+    kind: dimension
+    business_key: [advisor_id]
+    current_view: true
+    columns:
+      - {name: advisor_id, type: String, clean: trim}
+      - {name: full_name, type: String, clean: trim}
+      - {name: license_no, type: String, clean: trim}
+      - {name: hire_date, type: Date}
+      - {name: updated_at, type: DateTime}
+  custodians:
+    source_table: custodians
+    kind: dimension
+    business_key: [custodian_id]
+    current_view: true
+    columns:
+      - {name: custodian_id, type: String, clean: trim}
+      - {name: name, type: String, clean: trim}
+      - {name: country, type: String, clean: upper_trim}
+      - {name: updated_at, type: DateTime}
+  portfolios:
+    source_table: portfolios
+    kind: dimension
+    business_key: [portfolio_id]
+    foreign_keys:
+      account_id: accounts
+    current_view: true
+    columns:
+      - {name: portfolio_id, type: String, clean: trim}
+      - {name: account_id, type: String, clean: trim}
+      - {name: model_name, type: String, clean: trim}
+      - {name: updated_at, type: DateTime}
+  securities:
+    source_table: securities
+    kind: dimension
+    business_key: [security_id]
+    current_view: true
+    columns:
+      - {name: security_id, type: String, clean: trim}
+      - {name: ticker, type: String, clean: upper_trim}
+      - {name: asset_class, type: String, clean: upper_trim}
+      - {name: price, type: "Decimal(18, 2)"}
+      - {name: updated_at, type: DateTime}
+  holdings:
+    source_table: holdings
+    kind: fact
+    business_key: [portfolio_id, security_id]
+    foreign_keys:
+      portfolio_id: portfolios
+      security_id: securities
+    current_view: true
+    columns:
+      - {name: portfolio_id, type: String, clean: trim}
+      - {name: security_id, type: String, clean: trim}
+      - {name: as_of_date, type: Date}
+      - {name: quantity, type: Int64}
+      - {name: market_value, type: "Decimal(18, 2)"}
+      - {name: updated_at, type: DateTime}
+  trades:
+    source_table: trades
+    kind: fact
+    business_key: [trade_id]
+    foreign_keys:
+      portfolio_id: portfolios
+      security_id: securities
+    current_view: true
+    columns:
+      - {name: trade_id, type: String, clean: trim}
+      - {name: portfolio_id, type: String, clean: trim}
+      - {name: security_id, type: String, clean: trim}
+      - {name: side, type: String, clean: upper_trim}
+      - {name: quantity, type: Int64}
+      - {name: price, type: "Decimal(18, 2)"}
+      - {name: trade_date, type: Date}
+      - {name: updated_at, type: DateTime}
+  transactions:
+    source_table: transactions
+    kind: fact
+    business_key: [txn_id]
+    foreign_keys:
+      account_id: accounts
+    current_view: true
+    columns:
+      - {name: txn_id, type: String, clean: trim}
+      - {name: account_id, type: String, clean: trim}
+      - {name: txn_type, type: String, clean: upper_trim}
+      - {name: amount, type: "Decimal(18, 2)"}
+      - {name: txn_date, type: Date}
+      - {name: created_at, type: DateTime}
+      - {name: updated_at, type: DateTime}
+  fee_schedules:
+    source_table: fee_schedules
+    kind: dimension
+    business_key: [fee_schedule_id]
+    current_view: true
+    columns:
+      - {name: fee_schedule_id, type: String, clean: trim}
+      - {name: name, type: String, clean: trim}
+      - {name: bps, type: Int64}
+      - {name: updated_at, type: DateTime}
+  statements:
+    source_table: statements
+    kind: fact
+    business_key: [statement_id]
+    foreign_keys:
+      account_id: accounts
+    current_view: true
+    columns:
+      - {name: statement_id, type: String, clean: trim}
+      - {name: account_id, type: String, clean: trim}
+      - {name: statement_date, type: Date}
+      - {name: ending_balance, type: "Decimal(18, 2)"}
+      - {name: updated_at, type: DateTime}

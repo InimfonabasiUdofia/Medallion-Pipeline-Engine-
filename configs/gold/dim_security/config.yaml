@@ -1,0 +1,10 @@
+name: dim_security
+kind: dimension
+engine: MergeTree
+engine_reason: >
+  Dimension rebuilt in full on every run from the current-state Silver view; plain MergeTree is enough.
+order_by: [organisation_id, security_key]
+surrogate_key: {name: security_key, from: [organisation_id, security_id]}
+reconcile:
+  gold_sql: SELECT count() FROM gold.dim_security
+  silver_sql: SELECT count() FROM silver.securities_current

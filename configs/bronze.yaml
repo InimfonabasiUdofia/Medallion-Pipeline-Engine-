@@ -1,0 +1,116 @@
+# Bronze layer config: one entry per raw table landed in MinIO.
+# Layout in MinIO: <bucket>/<source>/<table>/<organisation_id>/<YYYY-MM-DD>/data.orc
+# organisation_id and processing_date are NOT in the files; they are taken from the file path.
+
+defaults:
+  database: bronze
+  bucket: bronze
+  endpoint: minio:9000          # address of MinIO from inside the Docker network
+  format: ORC
+  credentials_env: [MINIO_ROOT_USER, MINIO_ROOT_PASSWORD]   # read from environment, never hardcoded
+  partitions:                   # position in _path.split('/') (1 = bucket)
+    organisation_id: {path_index: 4, type: String}
+    processing_date: {path_index: 5, type: Date}
+
+tables:
+  households:
+    source: salesforce
+    columns:
+      - {name: household_id, type: String}
+      - {name: household_name, type: String}
+      - {name: advisor_id, type: String}
+      - {name: updated_at, type: DateTime}
+  contacts:
+    source: salesforce
+    columns:
+      - {name: contact_id, type: String}
+      - {name: household_id, type: String}
+      - {name: first_name, type: String}
+      - {name: last_name, type: String}
+      - {name: email, type: String}
+      - {name: updated_at, type: DateTime}
+  accounts:
+    source: salesforce
+    columns:
+      - {name: account_id, type: String}
+      - {name: household_id, type: String}
+      - {name: custodian_id, type: String}
+      - {name: account_type, type: String}
+      - {name: status, type: String}
+      - {name: opened_date, type: Date}
+      - {name: updated_at, type: DateTime}
+  advisors:
+    source: salesforce
+    columns:
+      - {name: advisor_id, type: String}
+      - {name: full_name, type: String}
+      - {name: license_no, type: String}
+      - {name: hire_date, type: Date}
+      - {name: updated_at, type: DateTime}
+  custodians:
+    source: blackdiamond
+    columns:
+      - {name: custodian_id, type: String}
+      - {name: name, type: String}
+      - {name: country, type: String}
+      - {name: updated_at, type: DateTime}
+  portfolios:
+    source: blackdiamond
+    columns:
+      - {name: portfolio_id, type: String}
+      - {name: account_id, type: String}
+      - {name: model_name, type: String}
+      - {name: updated_at, type: DateTime}
+  securities:
+    source: blackdiamond
+    columns:
+      - {name: security_id, type: String}
+      - {name: ticker, type: String}
+      - {name: asset_class, type: String}
+      - {name: price, type: Float64}
+      - {name: updated_at, type: DateTime}
+  holdings:
+    source: blackdiamond
+    columns:
+      - {name: portfolio_id, type: String}
+      - {name: security_id, type: String}
+      - {name: as_of_date, type: Date}
+      - {name: quantity, type: Int64}
+      - {name: market_value, type: Float64}
+      - {name: updated_at, type: DateTime}
+  trades:
+    source: orion
+    columns:
+      - {name: trade_id, type: String}
+      - {name: portfolio_id, type: String}
+      - {name: security_id, type: String}
+      - {name: side, type: String}
+      - {name: quantity, type: Int64}
+      - {name: price, type: Float64}
+      - {name: trade_date, type: Date}
+      - {name: updated_at, type: DateTime}
+  transactions:
+    source: orion
+    columns:
+      - {name: txn_id, type: String}
+      - {name: account_id, type: String}
+      - {name: txn_type, type: String}
+      - {name: amount, type: Float64}
+      - {name: txn_date, type: Date}
+      - {name: created_at, type: DateTime}
+      - {name: updated_at, type: DateTime}
+  fee_schedules:
+    source: orion
+    columns:
+      - {name: fee_schedule_id, type: String}
+      - {name: name, type: String}
+      - {name: bps, type: Int64}
+      - {name: updated_at, type: DateTime}
+  statements:
+    source: orion
+    columns:
+      - {name: statement_id, type: String}
+      - {name: account_id, type: String}
+      - {name: statement_date, type: Date}
+      - {name: ending_balance, type: Float64}
+      - {name: updated_at, type: DateTime}

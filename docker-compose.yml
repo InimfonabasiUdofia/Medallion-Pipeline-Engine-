@@ -1,0 +1,411 @@
+
+# ============================================================
+# MEDALLION DATA PLATFORM
+# Apache Airflow 3.3.0 + LocalExecutor
+# PostgreSQL + MinIO + ClickHouse
+# Local development configuration
+# ============================================================
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+# ============================================================
+# SHARED AIRFLOW CONFIGURATION
+# ============================================================
+
+x-airflow-common: &airflow-common
+  image: data-platform-airflow:latest
+
+  build:
+    context: .
+    dockerfile: Dockerfile
+
+  env_file:
+    - ${ENV_FILE_PATH:-.env}
+
+  logging: *default-logging
+
+  environment: &airflow-common-env
+
+    # Airflow core
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+
+    AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
+
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/${POSTGRES_DB}
+
+    AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:-}
+
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+
+    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-apiserver:8080/execution/
+
+    # Airflow API security
+    AIRFLOW__API__SECRET_KEY: ${AIRFLOW_SECRET_KEY}
+
+    AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_SECRET_KEY}
+
+    AIRFLOW__API_AUTH__JWT_ISSUER: airflow
+
+    # Scheduler
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
+
+    # Automatic DAG discovery
+    AIRFLOW__DAG_PROCESSOR__REFRESH_INTERVAL: "10"
+
+    AIRFLOW__DAG_PROCESSOR__MIN_FILE_PROCESS_INTERVAL: "10"
+
+    # Logging
+    AIRFLOW__LOGGING__LOGGING_LEVEL: INFO
+
+    AIRFLOW_CONFIG: /opt/airflow/config/airflow.cfg
+
+    # Python project
+    PYTHONPATH: /opt/airflow/project
+
+    # MinIO
+    MINIO_ENDPOINT: minio:9000
+
+    MINIO_BUCKET: bronze
+
+    MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+
+    MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+
+    # ClickHouse
+    CLICKHOUSE_HOST: clickhouse
+
+    CLICKHOUSE_HOST_LOCAL: clickhouse
+
+    CLICKHOUSE_PORT: "8123"
+
+    CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
+
+    CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-}
+
+  volumes:
+
+    # DAGs: automatically synchronized with the host
+    - ./airflow/dags:/opt/airflow/dags
+
+    # Airflow logs
+    - ./airflow/logs:/opt/airflow/logs
+
+    # Airflow configuration
+    - ./airflow/config:/opt/airflow/config
+
+    # Airflow plugins
+    - ./airflow/plugins:/opt/airflow/plugins
+
+    # Project configurations
+    - ./configs:/opt/airflow/project/configs
+
+    # Python engine
+    - ./engine:/opt/airflow/project/engine
+
+  user: "${AIRFLOW_UID:-50000}:0"
+
+  depends_on: &airflow-common-depends-on
+    postgres:
+      condition: service_healthy
+
+
+# ============================================================
+# SERVICES
+# ============================================================
+
+services:
+
+  # ----------------------------------------------------------
+  # POSTGRESQL - AIRFLOW METADATA DATABASE
+  # ----------------------------------------------------------
+
+  postgres:
+    image: postgres:16
+
+    container_name: postgres
+
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+
+    volumes:
+      - postgres-db-volume:/var/lib/postgresql/data
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}
+
+      interval: 10s
+      retries: 5
+      start_period: 5s
+
+    restart: always
+
+    logging: *default-logging
+
+
+  # ----------------------------------------------------------
+  # MINIO - OBJECT STORAGE
+  # ----------------------------------------------------------
+
+  minio:
+    image: pgsty/minio:latest
+
+    container_name: minio
+
+    command: server /data --console-address ":9001"
+
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+
+    volumes:
+      - minio_data:/data
+
+    restart: unless-stopped
+
+    logging: *default-logging
+
+
+  # ----------------------------------------------------------
+  # MINIO INITIALIZATION
+  # ----------------------------------------------------------
+
+  minio-init:
+    image: pgsty/mc:latest
+
+    container_name: minio-init
+
+    depends_on:
+      minio:
+        condition: service_started
+
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000
+      $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD}; do
+        echo 'Waiting for MinIO...';
+        sleep 3;
+      done;
+      mc mb --ignore-existing local/bronze &&
+      echo 'Bronze bucket ready'
+      "
+
+    restart: "no"
+
+    logging: *default-logging
+
+
+  # ----------------------------------------------------------
+  # CLICKHOUSE - ANALYTICS DATABASE
+  # ----------------------------------------------------------
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+
+    container_name: clickhouse
+
+    ports:
+      - "8123:8123"
+      - "9002:9000"
+
+    environment:
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-analytics}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget -q --spider http://localhost:8123/ping || exit 1
+
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+    restart: unless-stopped
+
+    logging: *default-logging
+
+
+  # ----------------------------------------------------------
+  # AIRFLOW API SERVER
+  # ----------------------------------------------------------
+
+  airflow-apiserver:
+    <<: *airflow-common
+
+    container_name: airflow-apiserver
+
+    command: api-server
+
+    ports:
+      - "8080:8080"
+
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - --fail
+        - http://localhost:8080/api/v2/monitor/health
+
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+    restart: always
+
+    depends_on:
+      <<: *airflow-common-depends-on
+
+      airflow-init:
+        condition: service_completed_successfully
+
+
+  # ----------------------------------------------------------
+  # AIRFLOW SCHEDULER
+  # ----------------------------------------------------------
+
+  airflow-scheduler:
+    <<: *airflow-common
+
+    container_name: airflow-scheduler
+
+    command: scheduler
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - 'airflow jobs check --job-type SchedulerJob --hostname "$${HOSTNAME}"'
+
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+    restart: always
+
+    depends_on:
+      <<: *airflow-common-depends-on
+
+      airflow-init:
+        condition: service_completed_successfully
+
+
+  # ----------------------------------------------------------
+  # AIRFLOW DAG PROCESSOR
+  # ----------------------------------------------------------
+
+  airflow-dag-processor:
+    <<: *airflow-common
+
+    container_name: airflow-dag-processor
+
+    command: dag-processor
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - 'airflow jobs check --job-type DagProcessorJob --hostname "$${HOSTNAME}"'
+
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+    restart: always
+
+    depends_on:
+      <<: *airflow-common-depends-on
+
+      airflow-init:
+        condition: service_completed_successfully
+
+
+  # ----------------------------------------------------------
+  # AIRFLOW INITIALIZATION
+  # ----------------------------------------------------------
+
+  airflow-init:
+    <<: *airflow-common
+
+    entrypoint: /bin/bash
+
+    command:
+      - -c
+      - |
+        echo "Creating Airflow directories..."
+
+        mkdir -p /opt/airflow/{logs,dags,plugins,config}
+
+        echo "Airflow version:"
+
+        /entrypoint airflow version
+
+        echo "Generating Airflow configuration..."
+
+        /entrypoint airflow config list >/dev/null
+
+        echo "Fixing directory ownership..."
+
+        chown -R "${AIRFLOW_UID:-50000}:0" \
+          /opt/airflow/logs \
+          /opt/airflow/dags \
+          /opt/airflow/plugins \
+          /opt/airflow/config
+
+        echo "Airflow initialization completed."
+
+    environment:
+      <<: *airflow-common-env
+
+      _AIRFLOW_DB_MIGRATE: "true"
+
+      _AIRFLOW_WWW_USER_CREATE: "true"
+
+      _AIRFLOW_WWW_USER_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME:-airflow}
+
+      _AIRFLOW_WWW_USER_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-airflow}
+
+    user: "0:0"
+
+    restart: "no"
+
+
+# ============================================================
+# PERSISTENT VOLUMES
+# ============================================================
+
+volumes:
+  postgres-db-volume:
+
+  minio_data:
+
+  clickhouse_data:

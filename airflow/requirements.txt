@@ -1,0 +1,9 @@
+clickhouse-connect
+minio
+pyarrow
+pyyaml
+jinja2
+faker
+python-dotenv
+ pyyaml 
+ clickhouse-connect 

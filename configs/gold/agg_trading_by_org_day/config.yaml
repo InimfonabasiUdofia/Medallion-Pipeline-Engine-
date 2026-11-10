@@ -1,0 +1,12 @@
+name: agg_trading_by_org_day
+kind: aggregate
+engine: AggregatingMergeTree
+engine_reason: >
+  Distinct active portfolios cannot be added across batches, because the same portfolio may trade in
+  two batches. AggregatingMergeTree stores partial aggregate states (uniqState, countState, sumState)
+  that merge correctly. Read through the _v view, which finalises the states.
+order_by: [organisation_id, processing_date, side]
+read_view: agg_trading_by_org_day_v
+reconcile:
+  gold_sql: SELECT sum(notional) FROM gold.agg_trading_by_org_day_v
+  silver_sql: SELECT sum(quantity * price) FROM silver.trades

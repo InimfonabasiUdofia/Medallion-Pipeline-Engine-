@@ -1,0 +1,13 @@
+name: fact_holdings_daily
+kind: fact
+engine: MergeTree
+engine_reason: >
+  Detailed fact table: one row per organisation, day, account and security. Rows are never merged or
+  summed, so a plain MergeTree sorted by tenant and date is the right choice.
+order_by: [organisation_id, processing_date, account_key, security_key]
+foreign_keys:
+  account_key: [organisation_id, account_id]
+  security_key: [organisation_id, security_id]
+reconcile:
+  gold_sql: SELECT sum(market_value) FROM gold.fact_holdings_daily
+  silver_sql: SELECT sum(market_value) FROM silver.holdings

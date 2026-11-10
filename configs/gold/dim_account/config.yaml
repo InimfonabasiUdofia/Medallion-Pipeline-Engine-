@@ -1,0 +1,12 @@
+name: dim_account
+kind: dimension
+engine: MergeTree
+engine_reason: >
+  Dimension rebuilt in full on every run from the current-state Silver view; plain MergeTree is enough.
+order_by: [organisation_id, account_key]
+surrogate_key: {name: account_key, from: [organisation_id, account_id]}
+foreign_keys:
+  household_key: [organisation_id, household_id]
+reconcile:
+  gold_sql: SELECT count() FROM gold.dim_account
+  silver_sql: SELECT count() FROM silver.accounts_current

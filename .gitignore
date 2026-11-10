@@ -1,0 +1,91 @@
+
+# =====================================
+# PYTHON
+# =====================================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Python testing and coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# =====================================
+# ENVIRONMENT VARIABLES & SECRETS
+# =====================================
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+credentials.json
+service-account*.json
+
+# =====================================
+# AIRFLOW
+# =====================================
+airflow/logs/
+airflow/__pycache__/
+airflow/dag_test_results/
+
+# Airflow local state
+airflow.db
+airflow.cfg
+
+# =====================================
+# DOCKER
+# =====================================
+*.pid
+*.sock
+
+# =====================================
+# DATA FILES
+# =====================================
+*.csv
+*.parquet
+*.avro
+*.orc
+*.jsonl
+*.xlsx
+*.xls
+
+
+# =====================================
+# IDE
+# =====================================
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# =====================================
+# SYSTEM
+# =====================================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# =====================================
+# TEMPORARY FILES
+# =====================================
+*.log
+*.tmp
+*.bak
+*.old
+temp/
+tmp/

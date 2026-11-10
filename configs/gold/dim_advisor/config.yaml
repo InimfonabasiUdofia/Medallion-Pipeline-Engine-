@@ -1,0 +1,11 @@
+name: dim_advisor
+kind: dimension
+engine: MergeTree
+engine_reason: >
+  Small reference table rebuilt in full on every run. No merge-time logic is needed, so a plain
+  MergeTree is the simplest correct choice.
+order_by: [organisation_id, advisor_key]
+surrogate_key: {name: advisor_key, from: [organisation_id, advisor_id]}
+reconcile:
+  gold_sql: SELECT count() FROM gold.dim_advisor
+  silver_sql: SELECT count() FROM silver.advisors_current

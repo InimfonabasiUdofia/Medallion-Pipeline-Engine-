@@ -1,0 +1,10 @@
+name: agg_aum_by_org_assetclass_day
+kind: aggregate
+engine: SummingMergeTree
+engine_reason: >
+  Assets under management and position counts are purely additive. SummingMergeTree adds up rows
+  with the same sort key during merges, so loading a day in several batches still gives correct totals.
+order_by: [organisation_id, processing_date, asset_class]
+reconcile:
+  gold_sql: SELECT sum(total_aum) FROM gold.agg_aum_by_org_assetclass_day
+  silver_sql: SELECT sum(market_value) FROM silver.holdings

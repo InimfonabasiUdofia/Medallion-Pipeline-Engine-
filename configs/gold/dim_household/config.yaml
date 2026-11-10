@@ -1,0 +1,12 @@
+name: dim_household
+kind: dimension
+engine: MergeTree
+engine_reason: >
+  Reference dimension rebuilt in full on every run; plain MergeTree is enough.
+order_by: [organisation_id, household_key]
+surrogate_key: {name: household_key, from: [organisation_id, household_id]}
+foreign_keys:
+  advisor_key: [organisation_id, advisor_id]
+reconcile:
+  gold_sql: SELECT count() FROM gold.dim_household
+  silver_sql: SELECT count() FROM silver.households_current
