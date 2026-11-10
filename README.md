@@ -39,12 +39,11 @@ Add a table to a YAML file (or a new folder under `configs/gold/`) and the Airfl
 ├── airflow/dags/
 │   └── medallion_pipeline.py # generator DAG (one task per table)
 ├── tools/
-│   └── generate_data.py      # synthetic ORC generator -> MinIO
+│   └── data.py      # synthetic ORC generator -> MinIO
 ├── tests/
 │   └── test_gold_guard.py    # multi-tenancy guard tests
-└── docs/
-    ├── data_catalog.md       # data models + catalog of every table
-    └── models/               # OLTP and OLAP diagrams (Mermaid)
+└── data_catalog.md 
+  
 ```
 
 ## Quick start
